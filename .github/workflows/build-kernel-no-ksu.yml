@@ -93,6 +93,11 @@ jobs:
         # 禁用 DTB overlay（避免编译错误）
         scripts/config --file out/.config --disable CONFIG_BUILD_ARM64_DT_OVERLAY
 
+        # 禁用 Elliptic Labs 驱动（缺少闭源库）
+        scripts/config --file out/.config --disable SND_SOC_ELLIPTIC
+        scripts/config --file out/.config --disable ELLIPTIC_US
+        scripts/config --file out/.config --disable SND_SOC_ELLIPTIC_US
+
         make O=out ARCH=arm64 CC=clang olddefconfig
 
         echo "=== 验证配置 ==="
