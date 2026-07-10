@@ -1,0 +1,261 @@
+name: Build Kernel with KernelSU
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernelsu_version:
+        description: 'KernelSU version tag (e.g., v0.9.5)'
+        required: true
+        default: 'v0.9.5'
+      upload_boot_img:
+        description: 'Upload boot.img as artifact'
+        required: true
+        default: 'true'
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
+
+    - name: Setup Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison build-essential ccache curl flex \
+          g++-multilib gcc-multilib git gnupg gperf \
+          imagemagick lib32ncurses5-dev lib32readline-dev \
+          lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
+          libsdl1.2-dev libssl-dev libwxgtk3.0-gtk3-dev \libxml2 libxml2-utils lzop pngcrush \
+          rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+          python3 python3-pip wget cpio unzip device-tree-compiler
+
+    - name: Download Clang Toolchain
+      run: |
+        mkdir -p ~/toolchains
+        cd ~/toolchains
+        # 下载 Clang 18.1.8（AOSP）
+        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498229b.tar.gz
+        mkdir clang-r498229b
+        tar -xzf clang-r498229b.tar.gz -C clang-r498229b
+        
+        # 下载 GCC ARM64 工具链
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc-arm64
+        
+        # 下载 GCC ARM 工具链
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc-arm
+
+    - name: Integrate KernelSU
+      run: |
+        cd $GITHUB_WORKSPACE
+        
+        # 下载 KernelSU
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_version }}
+        
+        # 验证集成
+        if [ -d "KernelSU" ] || [ -d "drivers/kernelsu" ]; then
+          echo "✅ KernelSU integrated successfully"
+          ls -la KernelSU 2>/dev/null || ls -la drivers/kernelsu
+        else
+          echo "❌ KernelSU integration failed"
+          exit 1
+        fi
+
+    - name: Configure Kernel
+      run: |
+        cd $GITHUB_WORKSPACE
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CLANG_PATH=~/toolchains/clang-r498229b
+        export PATH=$CLANG_PATH/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        export CROSS_COMPILE=aarch64-linux-android-
+        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        export CC=clang
+        export LD=ld.lld
+        export AR=llvm-ar
+        export NM=llvm-nm
+        export OBJCOPY=llvm-objcopy
+        export OBJDUMP=llvm-objdump
+        export STRIP=llvm-strip
+        
+        # 查找正确的 defconfig
+        echo "=== 查找 defconfig ==="
+        if [ -f arch/arm64/configs/vendor/sm8150-perf_defconfig ]; then
+          DEFCONFIG="vendor/sm8150-perf_defconfig"
+        elif [ -f arch/arm64/configs/vendor/sm8150_defconfig ]; then
+          DEFCONFIG="vendor/sm8150_defconfig"
+        elif [ -f arch/arm64/configs/vendor/raphael_defconfig ]; then
+          DEFCONFIG="vendor/raphael_defconfig"
+        elif [ -f arch/arm64/configs/sm8150-perf_defconfig ]; then
+          DEFCONFIG="sm8150-perf_defconfig"
+        elif [ -f arch/arm64/configs/sm8150_defconfig ]; then
+          DEFCONFIG="sm8150_defconfig"
+        else
+          DEFCONFIG="defconfig"
+        fi
+        
+        echo "使用配置: $DEFCONFIG"
+        
+        # 生成默认配置
+        make O=out ARCH=arm64 $DEFCONFIG
+        
+        # 启用 KernelSU 和模块支持（关键配置）
+        echo "=== 应用自定义配置 ==="
+        
+        # 模块支持
+        scripts/config --file out/.config \
+          --enable MODULES \
+          --enable MODULE_UNLOAD \
+          --enable MODVERSIONS
+        
+        # 禁用模块签名强制（最关键！）
+        scripts/config --file out/.config \
+          --disable MODULE_SIG \
+          --disable MODULE_SIG_FORCE \
+          --disable MODULE_SIG_ALL
+        
+        # 内核符号表
+        scripts/config --file out/.config \
+          --enable KALLSYMS \
+          --enable KALLSYMS_ALL
+        
+        # Kprobe 支持
+        scripts/config --file out/.config \
+          --enable KPROBES \
+          --enable HAVE_KPROBES \
+          --enable KPROBE_EVENTS \
+          --enable KRETPROBES
+        
+        # 重新生成配置（应用更改）
+        make O=out ARCH=arm64 olddefconfig
+        
+        # 验证配置
+        echo "=== 验证关键配置 ==="
+        grep "CONFIG_MODULES" out/.config
+        grep "CONFIG_MODULE_SIG" out/.config || echo "✅ MODULE_SIG disabled"
+        grep "CONFIG_KALLSYMS" out/.config
+        grep "CONFIG_KPROBES" out/.config
+
+    - name: Build Kernel
+      run: |
+        cd $GITHUB_WORKSPACE
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CLANG_PATH=~/toolchains/clang-r498229b
+        export PATH=$CLANG_PATH/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
+        export CLANG_TRIPLE=aarch64-linux-gnu-
+        export CROSS_COMPILE=aarch64-linux-android-
+        export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        export CC=clang
+        export LD=ld.lld
+        export AR=llvm-ar
+        export NM=llvm-nm
+        export OBJCOPY=llvm-objcopy
+        export OBJDUMP=llvm-objdump
+        export STRIP=llvm-strip
+        
+        # 编译内核
+        make -j$(nproc) O=out ARCH=arm64 \
+          CC=clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          CROSS_COMPILE=aarch64-linux-android- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi-
+
+    - name: Check Build Output
+      run: |
+        if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+          echo "✅ Kernel image built successfully"
+          ls -lh out/arch/arm64/boot/Image.gz-dtb
+        elif [ -f out/arch/arm64/boot/Image.gz ]; then
+          echo "✅ Kernel image built (Image.gz only)"
+          ls -lh out/arch/arm64/boot/Image.gz
+        else
+          echo "❌ Kernel build failed - no kernel image found"
+          exit 1
+        fi
+
+    - name: Package Boot Image
+      if: github.event.inputs.upload_boot_img == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE
+        
+        # 下载 AnyKernel3
+        git clone --depth=1 https://github.com/osm0sis/AnyKernel3
+        cd AnyKernel3
+        
+        # 配置 AnyKernel3 for raphael
+        cat > anykernel.sh << 'EOF'
+        # AnyKernel3 Ramdisk Mod Script
+        properties() { '
+        kernel.string=KernelSU Kernel for Raphael
+        do.devicecheck=1
+        do.modules=0
+        do.systemless=1
+        do.cleanup=1
+        do.cleanuponabort=0
+        device.name1=raphael
+        device.name2=raphaelin
+        device.name3=
+        supported.versions=
+        supported.patchlevels=
+        '; }
+        
+        block=/dev/block/bootdevice/by-name/boot;
+        is_slot_device=0;
+        ramdisk_compression=auto;
+        
+        . tools/ak3-core.sh;
+        
+        dump_boot;
+        write_boot;
+        EOF
+        
+        # 复制内核镜像
+        if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
+          cp ../out/arch/arm64/boot/Image.gz-dtb ./
+        elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
+          cp ../out/arch/arm64/boot/Image.gz ./
+        fi
+        
+        # 打包
+        zip -r9 ../KernelSU-raphael-$(date +%Y%m%d).zip * -x .git README.md .gitignore
+
+    - name: Upload Kernel Image
+      uses: actions/upload-artifact@v4
+      with:
+        name: Image.gz-dtb
+        path: out/arch/arm64/boot/Image.gz-dtb
+
+    - name: Upload Boot ZIP
+      if: github.event.inputs.upload_boot_img == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: KernelSU-Boot-ZIP
+        path: KernelSU-raphael-*.zip
+
+    - name: Generate Build Info
+      run: |
+        cd $GITHUB_WORKSPACE
+        echo "=== Build Information ===" > build-info.txt
+        echo "Device: Redmi K20 Pro (raphael)" >> build-info.txt
+        echo "Kernel Version: $(make kernelversion O=out)" >> build-info.txt
+        echo "KernelSU Version: ${{ github.event.inputs.kernelsu_version }}" >> build-info.txt
+        echo "Build Date: $(date)" >> build-info.txt
+        echo "Compiler: $(out/../toolchains/clang-r498229b/bin/clang --version | head -1)" >> build-info.txt
+        echo "" >> build-info.txt
+        echo "=== Key Configs ===" >> build-info.txt
+        grep -E "CONFIG_MODULES|CONFIG_MODULE_SIG|CONFIG_KALLSYMS|CONFIG_KPROBES" out/.config >> build-info.txt
+        cat build-info.txt
+
+    - name: Upload Build Info
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-info
+        path: build-info.txt
