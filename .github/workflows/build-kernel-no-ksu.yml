@@ -99,16 +99,26 @@ jobs:
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC_US
         scripts/config --file out/.config --disable ELLIPTIC
 
-        # 如果 config 禁用不生效，直接删除相关文件
+        # 如果 config 禁用不生效，直接删除相关文件并修改构建脚本
         if [ -f techpack/audio/dsp/apr_elliptic.c ]; then
           echo "=== 删除 apr_elliptic.c 避免链接错误 ==="
           rm -f techpack/audio/dsp/apr_elliptic.c
           rm -f techpack/audio/dsp/apr_elliptic.o
         fi
 
-        # 修改 Makefile 移除 elliptic 编译
+        # 修改 Makefile 移除 elliptic 编译和链接
         if [ -f techpack/audio/dsp/Makefile ]; then
+          echo "=== 修改 Makefile 移除 apr_elliptic 引用 ==="
           sed -i '/apr_elliptic/d' techpack/audio/dsp/Makefile
+          # 如果有 DLKM 链接列表也需要移除
+          sed -i 's/apr_elliptic\.o//g' techpack/audio/dsp/Makefile
+        fi
+
+        # 检查是否有 Kbuild 文件也需要修改
+        if [ -f techpack/audio/dsp/Kbuild ]; then
+          echo "=== 修改 Kbuild 移除 apr_elliptic 引用 ==="
+          sed -i '/apr_elliptic/d' techpack/audio/dsp/Kbuild
+          sed -i 's/apr_elliptic\.o//g' techpack/audio/dsp/Kbuild
         fi
 
         make O=out ARCH=arm64 CC=clang olddefconfig
