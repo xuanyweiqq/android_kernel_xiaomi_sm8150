@@ -1,4 +1,4 @@
-name: Build Kernel with KernelSU
+name: Build Kernel with KernelSU (Simple)
 
 on:
   workflow_dispatch:
@@ -7,16 +7,12 @@ on:
         description: 'KernelSU version tag (e.g., v0.9.5)'
         required: true
         default: 'v0.9.5'
-      upload_boot_img:
-        description: 'Upload boot.img as artifact'
-        required: true
-        default: 'true'
 
 jobs:
   build:
     name: Build Kernel
     runs-on: ubuntu-22.04
-    
+
     steps:
     - name: Checkout Kernel Source
       uses: actions/checkout@v4
@@ -32,93 +28,35 @@ jobs:
           g++-multilib gcc-multilib git gnupg gperf \
           imagemagick lib32ncurses5-dev lib32readline-dev \
           lib32z1-dev liblz4-tool libncurses5 libncurses5-dev \
-          libsdl1.2-dev libssl-dev libwxgtk3.0-gtk3-dev \libxml2 libxml2-utils lzop pngcrush \
-          rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
-          python3 python3-pip wget cpio unzip device-tree-compiler
+          libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop \
+          pngcrush rsync schedtool squashfs-tools xsltproc zip \
+          zlib1g-dev python3 python3-pip wget cpio unzip
 
-    - name: Download Clang Toolchain
+    - name: Setup Toolchains (Proton Clang Only)
       run: |
         mkdir -p ~/toolchains
         cd ~/toolchains
-        
-        # 方案 A：使用 Proton Clang（更快更稳定，推荐）
-        echo "下载 Proton Clang 工具链..."
-        if wget -q --show-progress https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz -O proton-clang.tar.gz; then
-          tar -xzf proton-clang.tar.gz
-          mv proton-clang-master clang-r498229b
-          rm proton-clang.tar.gz
-          echo "✅ 使用 Proton Clang"
-        else
-          echo "Proton Clang 下载失败，尝试 AOSP Clang..."
-          
-          # 方案 B：AOSP Clang
-          if wget -q --timeout=30 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498229b.tar.gz -O clang.tar.gz; then
-            mkdir -p clang-r498229b
-            tar -xzf clang.tar.gz -C clang-r498229b
-            rm clang.tar.gz
-            echo "✅ 使用 AOSP Clang"
-          else
-            echo "AOSP Clang 下载失败，使用 Android NDK..."
-            
-            # 方案 C：Android NDK（包含 Clang）
-            wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip -O ndk.zip
-            unzip -q ndk.zip
-            mv android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64 clang-r498229b
-            rm -rf android-ndk-r26d ndk.zip
-            echo "✅ 使用 Android NDK Clang"
-          fi
-        fi
-        
-        # 验证 Clang
-        if [ -f clang-r498229b/bin/clang ]; then
-          echo "✅ Clang 工具链准备完成"
-          clang-r498229b/bin/clang --version | head -3
-        else
-          echo "❌ Clang 工具链安装失败"
-          exit 1
-        fi
-        
-        # 下载 GCC 工具链（使用缓存加速）
-        echo "下载 GCC 工具链..."
-        
-        # GCC ARM64
-        git clone --depth=1 --single-branch \
-          https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
-          gcc-arm64 || \
-        git clone --depth=1 \
-          https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
-          gcc-arm64
-        
-        # GCC ARM
-        git clone --depth=1 --single-branch \
-          https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
-          gcc-arm || \
-        git clone --depth=1 \
-          https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
-          gcc-arm
-        
-        # 验证
-        if [ -d gcc-arm64 ] && [ -d gcc-arm ]; then
-          echo "✅ GCC 工具链准备完成"
-        else
-          echo "❌ GCC 工具链下载失败"
-          exit 1
-        fi
-        
-        echo "=== 工具链摘要 ==="
+
+        echo "=== 下载 Proton Clang ==="
+        git clone --depth=1 https://github.com/kdrag0n/proton-clang
+
+        echo "=== 下载 GCC ARM64 ==="
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc-arm64
+
+        echo "=== 下载 GCC ARM ==="
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc-arm
+
+        echo "=== 验证工具链 ==="
         ls -la ~/toolchains/
-        du -sh ~/toolchains/*
+        ~/toolchains/proton-clang/bin/clang --version
 
     - name: Integrate KernelSU
       run: |
         cd $GITHUB_WORKSPACE
-        
-        # 下载 KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_version }}
-        
-        # 验证集成
+
         if [ -d "KernelSU" ] || [ -d "drivers/kernelsu" ]; then
-          echo "✅ KernelSU integrated successfully"
+          echo "✅ KernelSU integrated"
           ls -la KernelSU 2>/dev/null || ls -la drivers/kernelsu
         else
           echo "❌ KernelSU integration failed"
@@ -128,74 +66,51 @@ jobs:
     - name: Configure Kernel
       run: |
         cd $GITHUB_WORKSPACE
+
         export ARCH=arm64
         export SUBARCH=arm64
-        export CLANG_PATH=~/toolchains/clang-r498229b
-        export PATH=$CLANG_PATH/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
+        export PATH=~/toolchains/proton-clang/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CC=clang
-        export LD=ld.lld
-        export AR=llvm-ar
-        export NM=llvm-nm
-        export OBJCOPY=llvm-objcopy
-        export OBJDUMP=llvm-objdump
-        export STRIP=llvm-strip
-        
-        # 查找正确的 defconfig
+
         echo "=== 查找 defconfig ==="
         if [ -f arch/arm64/configs/vendor/sm8150-perf_defconfig ]; then
           DEFCONFIG="vendor/sm8150-perf_defconfig"
         elif [ -f arch/arm64/configs/vendor/sm8150_defconfig ]; then
           DEFCONFIG="vendor/sm8150_defconfig"
-        elif [ -f arch/arm64/configs/vendor/raphael_defconfig ]; then
-          DEFCONFIG="vendor/raphael_defconfig"
-        elif [ -f arch/arm64/configs/sm8150-perf_defconfig ]; then
-          DEFCONFIG="sm8150-perf_defconfig"
         elif [ -f arch/arm64/configs/sm8150_defconfig ]; then
           DEFCONFIG="sm8150_defconfig"
         else
           DEFCONFIG="defconfig"
         fi
-        
-        echo "使用配置: $DEFCONFIG"
-        
-        # 生成默认配置
-        make O=out ARCH=arm64 $DEFCONFIG
-        
-        # 启用 KernelSU 和模块支持（关键配置）
-        echo "=== 应用自定义配置 ==="
-        
-        # 模块支持
-        scripts/config --file out/.config \
-          --enable MODULES \
-          --enable MODULE_UNLOAD \
-          --enable MODVERSIONS
-        
-        # 禁用模块签名强制（最关键！）
-        scripts/config --file out/.config \
-          --disable MODULE_SIG \
-          --disable MODULE_SIG_FORCE \
-          --disable MODULE_SIG_ALL
-        
-        # 内核符号表
-        scripts/config --file out/.config \
-          --enable KALLSYMS \
-          --enable KALLSYMS_ALL
-        
-        # Kprobe 支持
-        scripts/config --file out/.config \
-          --enable KPROBES \
-          --enable HAVE_KPROBES \
-          --enable KPROBE_EVENTS \
-          --enable KRETPROBES
-        
-        # 重新生成配置（应用更改）
-        make O=out ARCH=arm64 olddefconfig
-        
-        # 验证配置
-        echo "=== 验证关键配置 ==="
+        echo "使用: $DEFCONFIG"
+
+        make O=out ARCH=arm64 CC=clang $DEFCONFIG
+
+        echo "=== 修改内核配置 ==="
+        # 启用模块支持
+        scripts/config --file out/.config --enable MODULES
+        scripts/config --file out/.config --enable MODULE_UNLOAD
+        scripts/config --file out/.config --enable MODVERSIONS
+
+        # 禁用模块签名（关键！）
+        scripts/config --file out/.config --disable MODULE_SIG
+        scripts/config --file out/.config --disable MODULE_SIG_FORCE
+        scripts/config --file out/.config --disable MODULE_SIG_ALL
+
+        # 启用符号表
+        scripts/config --file out/.config --enable KALLSYMS
+        scripts/config --file out/.config --enable KALLSYMS_ALL
+
+        # 启用 Kprobes
+        scripts/config --file out/.config --enable KPROBES
+        scripts/config --file out/.config --enable KPROBE_EVENTS
+        scripts/config --file out/.config --enable KRETPROBES
+
+        make O=out ARCH=arm64 CC=clang olddefconfig
+
+        echo "=== 验证配置 ==="
         grep "CONFIG_MODULES" out/.config
         grep "CONFIG_MODULE_SIG" out/.config || echo "✅ MODULE_SIG disabled"
         grep "CONFIG_KALLSYMS" out/.config
@@ -204,55 +119,48 @@ jobs:
     - name: Build Kernel
       run: |
         cd $GITHUB_WORKSPACE
+
         export ARCH=arm64
         export SUBARCH=arm64
-        export CLANG_PATH=~/toolchains/clang-r498229b
-        export PATH=$CLANG_PATH/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
+        export PATH=~/toolchains/proton-clang/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
         export CLANG_TRIPLE=aarch64-linux-gnu-
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-        export CC=clang
-        export LD=ld.lld
-        export AR=llvm-ar
-        export NM=llvm-nm
-        export OBJCOPY=llvm-objcopy
-        export OBJDUMP=llvm-objdump
-        export STRIP=llvm-strip
-        
-        # 编译内核
+
         make -j$(nproc) O=out ARCH=arm64 \
           CC=clang \
           CLANG_TRIPLE=aarch64-linux-gnu- \
           CROSS_COMPILE=aarch64-linux-android- \
           CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-    - name: Check Build Output
+    - name: Check Build Result
       run: |
         if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-          echo "✅ Kernel image built successfully"
+          echo "✅ Kernel built: Image.gz-dtb"
           ls -lh out/arch/arm64/boot/Image.gz-dtb
         elif [ -f out/arch/arm64/boot/Image.gz ]; then
-          echo "✅ Kernel image built (Image.gz only)"
+          echo "✅ Kernel built: Image.gz"
           ls -lh out/arch/arm64/boot/Image.gz
+        elif [ -f out/arch/arm64/boot/Image ]; then
+          echo "✅ Kernel built: Image"
+          ls -lh out/arch/arm64/boot/Image
         else
-          echo "❌ Kernel build failed - no kernel image found"
+          echo "❌ No kernel image found"
           exit 1
         fi
 
-    - name: Package Boot Image
-      if: github.event.inputs.upload_boot_img == 'true'
+    - name: Package AnyKernel3 ZIP
       run: |
         cd $GITHUB_WORKSPACE
-        
-        # 下载 AnyKernel3
+
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3
         cd AnyKernel3
-        
-        # 配置 AnyKernel3 for raphael
-        cat > anykernel.sh << 'EOF'
+
+        # 配置 AnyKernel3
+        cat > anykernel.sh << 'EOFMARKER'
         # AnyKernel3 Ramdisk Mod Script
-        properties() { '
-        kernel.string=KernelSU Kernel for Raphael
+        properties() {
+        kernel.string=KernelSU for Raphael by xuanyweiqq
         do.devicecheck=1
         do.modules=0
         do.systemless=1
@@ -260,57 +168,62 @@ jobs:
         do.cleanuponabort=0
         device.name1=raphael
         device.name2=raphaelin
-        device.name3=
         supported.versions=
         supported.patchlevels=
-        '; }
-        
+        }
+
         block=/dev/block/bootdevice/by-name/boot;
         is_slot_device=0;
         ramdisk_compression=auto;
-        
+
         . tools/ak3-core.sh;
-        
+
         dump_boot;
         write_boot;
-        EOF
-        
+        EOFMARKER
+
         # 复制内核镜像
         if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
           cp ../out/arch/arm64/boot/Image.gz-dtb ./
         elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
           cp ../out/arch/arm64/boot/Image.gz ./
+        elif [ -f ../out/arch/arm64/boot/Image ]; then
+          cp ../out/arch/arm64/boot/Image ./
         fi
-        
+
         # 打包
-        zip -r9 ../KernelSU-raphael-$(date +%Y%m%d).zip * -x .git README.md .gitignore
+        zip -r9 ../KernelSU-raphael-$(date +%Y%m%d-%H%M).zip * -x .git README.md .gitignore
 
-    - name: Upload Kernel Image
-      uses: actions/upload-artifact@v4
-      with:
-        name: Image.gz-dtb
-        path: out/arch/arm64/boot/Image.gz-dtb
-
-    - name: Upload Boot ZIP
-      if: github.event.inputs.upload_boot_img == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: KernelSU-Boot-ZIP
-        path: KernelSU-raphael-*.zip
+        cd ..
+        ls -lh KernelSU-raphael-*.zip
 
     - name: Generate Build Info
       run: |
         cd $GITHUB_WORKSPACE
-        echo "=== Build Information ===" > build-info.txt
+
+        echo "=== Kernel Build Info ===" > build-info.txt
         echo "Device: Redmi K20 Pro (raphael)" >> build-info.txt
         echo "Kernel Version: $(make kernelversion O=out)" >> build-info.txt
-        echo "KernelSU Version: ${{ github.event.inputs.kernelsu_version }}" >> build-info.txt
+        echo "KernelSU: ${{ github.event.inputs.kernelsu_version }}" >> build-info.txt
         echo "Build Date: $(date)" >> build-info.txt
-        echo "Compiler: $(out/../toolchains/clang-r498229b/bin/clang --version | head -1)" >> build-info.txt
+        echo "Builder: GitHub Actions" >> build-info.txt
         echo "" >> build-info.txt
-        echo "=== Key Configs ===" >> build-info.txt
-        grep -E "CONFIG_MODULES|CONFIG_MODULE_SIG|CONFIG_KALLSYMS|CONFIG_KPROBES" out/.config >> build-info.txt
+        echo "=== Critical Configs ===" >> build-info.txt
+        grep -E "CONFIG_MODULES=|CONFIG_MODULE_SIG|CONFIG_KALLSYMS=|CONFIG_KPROBES=" out/.config >> build-info.txt
+
         cat build-info.txt
+
+    - name: Upload Kernel Image
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-image
+        path: out/arch/arm64/boot/Image*
+
+    - name: Upload AnyKernel3 ZIP
+      uses: actions/upload-artifact@v4
+      with:
+        name: KernelSU-Flashable-ZIP
+        path: KernelSU-raphael-*.zip
 
     - name: Upload Build Info
       uses: actions/upload-artifact@v4
