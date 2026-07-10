@@ -40,16 +40,74 @@ jobs:
       run: |
         mkdir -p ~/toolchains
         cd ~/toolchains
-        # 下载 Clang 18.1.8（AOSP）
-        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498229b.tar.gz
-        mkdir clang-r498229b
-        tar -xzf clang-r498229b.tar.gz -C clang-r498229b
         
-        # 下载 GCC ARM64 工具链
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc-arm64
+        # 方案 A：使用 Proton Clang（更快更稳定，推荐）
+        echo "下载 Proton Clang 工具链..."
+        if wget -q --show-progress https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz -O proton-clang.tar.gz; then
+          tar -xzf proton-clang.tar.gz
+          mv proton-clang-master clang-r498229b
+          rm proton-clang.tar.gz
+          echo "✅ 使用 Proton Clang"
+        else
+          echo "Proton Clang 下载失败，尝试 AOSP Clang..."
+          
+          # 方案 B：AOSP Clang
+          if wget -q --timeout=30 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r498229b.tar.gz -O clang.tar.gz; then
+            mkdir -p clang-r498229b
+            tar -xzf clang.tar.gz -C clang-r498229b
+            rm clang.tar.gz
+            echo "✅ 使用 AOSP Clang"
+          else
+            echo "AOSP Clang 下载失败，使用 Android NDK..."
+            
+            # 方案 C：Android NDK（包含 Clang）
+            wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip -O ndk.zip
+            unzip -q ndk.zip
+            mv android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64 clang-r498229b
+            rm -rf android-ndk-r26d ndk.zip
+            echo "✅ 使用 Android NDK Clang"
+          fi
+        fi
         
-        # 下载 GCC ARM 工具链
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc-arm
+        # 验证 Clang
+        if [ -f clang-r498229b/bin/clang ]; then
+          echo "✅ Clang 工具链准备完成"
+          clang-r498229b/bin/clang --version | head -3
+        else
+          echo "❌ Clang 工具链安装失败"
+          exit 1
+        fi
+        
+        # 下载 GCC 工具链（使用缓存加速）
+        echo "下载 GCC 工具链..."
+        
+        # GCC ARM64
+        git clone --depth=1 --single-branch \
+          https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 \
+          gcc-arm64 || \
+        git clone --depth=1 \
+          https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
+          gcc-arm64
+        
+        # GCC ARM
+        git clone --depth=1 --single-branch \
+          https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 \
+          gcc-arm || \
+        git clone --depth=1 \
+          https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
+          gcc-arm
+        
+        # 验证
+        if [ -d gcc-arm64 ] && [ -d gcc-arm ]; then
+          echo "✅ GCC 工具链准备完成"
+        else
+          echo "❌ GCC 工具链下载失败"
+          exit 1
+        fi
+        
+        echo "=== 工具链摘要 ==="
+        ls -la ~/toolchains/
+        du -sh ~/toolchains/*
 
     - name: Integrate KernelSU
       run: |
