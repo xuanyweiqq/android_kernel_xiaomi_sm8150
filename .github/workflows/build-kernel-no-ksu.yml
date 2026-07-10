@@ -93,10 +93,23 @@ jobs:
         # 禁用 DTB overlay（避免编译错误）
         scripts/config --file out/.config --disable CONFIG_BUILD_ARM64_DT_OVERLAY
 
-        # 禁用 Elliptic Labs 驱动（缺少闭源库）
+        # 禁用 Elliptic Labs 驱动（缺少闭源库 elus_afe）
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC
         scripts/config --file out/.config --disable ELLIPTIC_US
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC_US
+        scripts/config --file out/.config --disable ELLIPTIC
+
+        # 如果 config 禁用不生效，直接删除相关文件
+        if [ -f techpack/audio/dsp/apr_elliptic.c ]; then
+          echo "=== 删除 apr_elliptic.c 避免链接错误 ==="
+          rm -f techpack/audio/dsp/apr_elliptic.c
+          rm -f techpack/audio/dsp/apr_elliptic.o
+        fi
+
+        # 修改 Makefile 移除 elliptic 编译
+        if [ -f techpack/audio/dsp/Makefile ]; then
+          sed -i '/apr_elliptic/d' techpack/audio/dsp/Makefile
+        fi
 
         make O=out ARCH=arm64 CC=clang olddefconfig
 
