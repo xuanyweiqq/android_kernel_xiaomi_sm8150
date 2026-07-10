@@ -65,10 +65,17 @@ jobs:
             echo "✅ KernelSU integrated"
             ls -la KernelSU 2>/dev/null || ls -la drivers/kernelsu
 
-            # 为 4.14 内核打补丁修复 syscall_fn_t 问题
+            # 为 4.14 内核打补丁修复兼容性问题
+            echo "=== 修复 KernelSU 兼容性 ==="
+
+            # 修复 syscall_fn_t 类型
             if [ -f "drivers/kernelsu/hook/syscall_hook.h" ]; then
-              echo "=== 修复 KernelSU 类型兼容性 ==="
               sed -i '1i#ifndef syscall_fn_t\ntypedef void (*syscall_fn_t)(void);\n#endif' drivers/kernelsu/hook/syscall_hook.h || true
+            fi
+
+            # 修复 MODULE_IMPORT_NS 问题（4.14 内核不支持）
+            if [ -f "drivers/kernelsu/ksu.c" ]; then
+              sed -i 's/MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);/\/\/ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver); \/\/ Commented for 4.14 kernel/' drivers/kernelsu/ksu.c || true
             fi
           else
             echo "⚠️ KernelSU integration failed, continuing without KernelSU"
