@@ -159,14 +159,14 @@ jobs:
         echo "supported.patchlevels=" >> anykernel.sh
         echo "'; }" >> anykernel.sh
         echo "" >> anykernel.sh
-        echo "block=/dev/block/bootdevice/by-name/boot;" >> anykernel.sh
+        echo "block=/dev/block/by-name/boot;" >> anykernel.sh
         echo "is_slot_device=0;" >> anykernel.sh
         echo "ramdisk_compression=auto;" >> anykernel.sh
         echo "" >> anykernel.sh
         echo ". tools/ak3-core.sh;" >> anykernel.sh
         echo "" >> anykernel.sh
-        echo "dump_boot;" >> anykernel.sh
-        echo "write_boot;" >> anykernel.sh
+        echo "split_boot;" >> anykernel.sh
+        echo "flash_boot;" >> anykernel.sh
 
         if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
           cp ../out/arch/arm64/boot/Image.gz-dtb ./
