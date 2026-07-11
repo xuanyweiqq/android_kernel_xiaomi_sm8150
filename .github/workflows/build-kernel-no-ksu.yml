@@ -100,23 +100,30 @@ jobs:
         scripts/config --file out/.config --disable ELLIPTIC
 
         # 如果 config 禁用不生效，直接删除相关文件并修改构建脚本
+        echo "=== 删除 Elliptic Labs 相关文件避免链接错误 ==="
+
+        # 删除所有 elliptic 相关文件
+        if [ -d techpack/audio/dsp/elliptic ]; then
+          rm -rf techpack/audio/dsp/elliptic
+        fi
+
         if [ -f techpack/audio/dsp/apr_elliptic.c ]; then
-          echo "=== 删除 apr_elliptic.c 避免链接错误 ==="
           rm -f techpack/audio/dsp/apr_elliptic.c
           rm -f techpack/audio/dsp/apr_elliptic.o
         fi
 
         # 修改 Makefile 移除 elliptic 编译和链接
         if [ -f techpack/audio/dsp/Makefile ]; then
-          echo "=== 修改 Makefile 移除 apr_elliptic 引用 ==="
+          echo "=== 修改 Makefile 移除 elliptic 引用 ==="
+          sed -i '/elliptic/d' techpack/audio/dsp/Makefile
           sed -i '/apr_elliptic/d' techpack/audio/dsp/Makefile
-          # 如果有 DLKM 链接列表也需要移除
           sed -i 's/apr_elliptic\.o//g' techpack/audio/dsp/Makefile
         fi
 
         # 检查是否有 Kbuild 文件也需要修改
         if [ -f techpack/audio/dsp/Kbuild ]; then
-          echo "=== 修改 Kbuild 移除 apr_elliptic 引用 ==="
+          echo "=== 修改 Kbuild 移除 elliptic 引用 ==="
+          sed -i '/elliptic/d' techpack/audio/dsp/Kbuild
           sed -i '/apr_elliptic/d' techpack/audio/dsp/Kbuild
           sed -i 's/apr_elliptic\.o//g' techpack/audio/dsp/Kbuild
         fi
