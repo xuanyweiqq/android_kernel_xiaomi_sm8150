@@ -189,29 +189,29 @@ jobs:
 
         # 配置 AnyKernel3
         cat > anykernel.sh << 'EOFMARKER'
-        # AnyKernel3 Ramdisk Mod Script
-        properties() {
-        kernel.string=Custom Kernel for Raphael (MODULE_SIG_FORCE disabled)
-        do.devicecheck=1
-        do.modules=0
-        do.systemless=1
-        do.cleanup=1
-        do.cleanuponabort=0
-        device.name1=raphael
-        device.name2=raphaelin
-        supported.versions=
-        supported.patchlevels=
-        }
+# AnyKernel3 Ramdisk Mod Script
+properties() { '
+kernel.string=Custom Kernel for Raphael (MODULE_SIG_FORCE disabled)
+do.devicecheck=1
+do.modules=0
+do.systemless=1
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=raphael
+device.name2=raphaelin
+supported.versions=
+supported.patchlevels=
+'; }
 
-        block=/dev/block/bootdevice/by-name/boot;
-        is_slot_device=0;
-        ramdisk_compression=auto;
+block=/dev/block/bootdevice/by-name/boot;
+is_slot_device=0;
+ramdisk_compression=auto;
 
-        . tools/ak3-core.sh;
+. tools/ak3-core.sh;
 
-        dump_boot;
-        write_boot;
-        EOFMARKER
+dump_boot;
+write_boot;
+EOFMARKER
 
         # 复制内核镜像
         if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
