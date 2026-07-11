@@ -145,6 +145,8 @@ jobs:
         cd AnyKernel3
 
         cat > anykernel.sh <<'AKEOF'
+        ## AnyKernel3 script
+        ## properties
         properties() { '
         kernel.string=Custom Kernel for Raphael
         do.devicecheck=1
@@ -158,12 +160,15 @@ jobs:
         supported.patchlevels=
         '; }
 
+        ## boot shell variables
         block=/dev/block/bootdevice/by-name/boot;
         is_slot_device=0;
         ramdisk_compression=auto;
 
+        ## AnyKernel methods
         . tools/ak3-core.sh;
 
+        ## AnyKernel install
         dump_boot;
         write_boot;
         AKEOF
