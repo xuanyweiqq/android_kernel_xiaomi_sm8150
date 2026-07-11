@@ -31,24 +31,19 @@ jobs:
       run: |
         mkdir -p ~/toolchains
         cd ~/toolchains
-
-        echo "=== 下载 Proton Clang ==="
+        echo "=== Downloading Proton Clang ==="
         git clone --depth=1 https://github.com/kdrag0n/proton-clang
-
-        echo "=== 下载 GCC ARM64 ==="
+        echo "=== Downloading GCC ARM64 ==="
         git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc-arm64
-
-        echo "=== 下载 GCC ARM ==="
+        echo "=== Downloading GCC ARM ==="
         git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc-arm
-
-        echo "=== 验证工具链 ==="
+        echo "=== Verify Toolchains ==="
         ls -la ~/toolchains/
         ~/toolchains/proton-clang/bin/clang --version
 
     - name: Configure Kernel
       run: |
         cd $GITHUB_WORKSPACE
-
         export ARCH=arm64
         export SUBARCH=arm64
         export PATH=~/toolchains/proton-clang/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
@@ -56,7 +51,7 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-        echo "=== 查找 defconfig ==="
+        echo "=== Finding defconfig ==="
         if [ -f arch/arm64/configs/vendor/sm8150-perf_defconfig ]; then
           DEFCONFIG="vendor/sm8150-perf_defconfig"
         elif [ -f arch/arm64/configs/vendor/sm8150_defconfig ]; then
@@ -66,63 +61,42 @@ jobs:
         else
           DEFCONFIG="defconfig"
         fi
-        echo "使用: $DEFCONFIG"
+        echo "Using: $DEFCONFIG"
 
         make O=out ARCH=arm64 CC=clang $DEFCONFIG
 
-        echo "=== 修改内核配置（禁用模块签名） ==="
-        # 启用模块支持
+        echo "=== Modifying Kernel Config ==="
         scripts/config --file out/.config --enable MODULES
         scripts/config --file out/.config --enable MODULE_UNLOAD
         scripts/config --file out/.config --enable MODVERSIONS
-
-        # ⭐ 禁用模块签名（关键！允许加载 cpufake 模块）
         scripts/config --file out/.config --disable MODULE_SIG
         scripts/config --file out/.config --disable MODULE_SIG_FORCE
         scripts/config --file out/.config --disable MODULE_SIG_ALL
-
-        # 启用符号表（cpufake 需要）
         scripts/config --file out/.config --enable KALLSYMS
         scripts/config --file out/.config --enable KALLSYMS_ALL
-
-        # 启用 Kprobes（cpufake 需要）
         scripts/config --file out/.config --enable KPROBES
         scripts/config --file out/.config --enable KPROBE_EVENTS
         scripts/config --file out/.config --enable KRETPROBES
-
-        # 禁用 DTB overlay（避免编译错误）
         scripts/config --file out/.config --disable CONFIG_BUILD_ARM64_DT_OVERLAY
-
-        # 禁用 Elliptic Labs 驱动（缺少闭源库 elus_afe）
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC
         scripts/config --file out/.config --disable ELLIPTIC_US
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC_US
         scripts/config --file out/.config --disable ELLIPTIC
 
-        # 如果 config 禁用不生效，直接删除相关文件并修改构建脚本
-        echo "=== 删除 Elliptic Labs 相关文件避免链接错误 ==="
-
-        # 删除所有 elliptic 相关文件
+        echo "=== Removing Elliptic Labs files ==="
         if [ -d techpack/audio/dsp/elliptic ]; then
           rm -rf techpack/audio/dsp/elliptic
         fi
-
         if [ -f techpack/audio/dsp/apr_elliptic.c ]; then
           rm -f techpack/audio/dsp/apr_elliptic.c
           rm -f techpack/audio/dsp/apr_elliptic.o
         fi
-
-        # 修改 Makefile 移除 elliptic 编译和链接
         if [ -f techpack/audio/dsp/Makefile ]; then
-          echo "=== 修改 Makefile 移除 elliptic 引用 ==="
           sed -i '/elliptic/d' techpack/audio/dsp/Makefile
           sed -i '/apr_elliptic/d' techpack/audio/dsp/Makefile
           sed -i 's/apr_elliptic\.o//g' techpack/audio/dsp/Makefile
         fi
-
-        # 检查是否有 Kbuild 文件也需要修改
         if [ -f techpack/audio/dsp/Kbuild ]; then
-          echo "=== 修改 Kbuild 移除 elliptic 引用 ==="
           sed -i '/elliptic/d' techpack/audio/dsp/Kbuild
           sed -i '/apr_elliptic/d' techpack/audio/dsp/Kbuild
           sed -i 's/apr_elliptic\.o//g' techpack/audio/dsp/Kbuild
@@ -130,20 +104,15 @@ jobs:
 
         make O=out ARCH=arm64 CC=clang olddefconfig
 
-        echo "=== 验证配置 ==="
-        echo "模块支持:"
-        grep "CONFIG_MODULES" out/.config
-        echo "模块签名:"
-        grep "CONFIG_MODULE_SIG" out/.config || echo "✅ MODULE_SIG 已禁用"
-        echo "符号表:"
-        grep "CONFIG_KALLSYMS" out/.config
-        echo "Kprobes:"
-        grep "CONFIG_KPROBES" out/.config
+        echo "=== Verifying Config ==="
+        grep "CONFIG_MODULES" out/.config || true
+        grep "CONFIG_MODULE_SIG" out/.config || echo "MODULE_SIG disabled"
+        grep "CONFIG_KALLSYMS" out/.config || true
+        grep "CONFIG_KPROBES" out/.config || true
 
     - name: Build Kernel
       run: |
         cd $GITHUB_WORKSPACE
-
         export ARCH=arm64
         export SUBARCH=arm64
         export PATH=~/toolchains/proton-clang/bin:~/toolchains/gcc-arm64/bin:~/toolchains/gcc-arm/bin:$PATH
@@ -151,69 +120,54 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-android-
         export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-        # 只编译内核镜像
-        make -j$(nproc) O=out ARCH=arm64 \
-          CC=clang \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-android- \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          Image.gz-dtb || make -j$(nproc) O=out ARCH=arm64 \
-          CC=clang \
-          CLANG_TRIPLE=aarch64-linux-gnu- \
-          CROSS_COMPILE=aarch64-linux-android- \
-          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
-          Image.gz
+        make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- Image.gz-dtb || make -j$(nproc) O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- Image.gz
 
     - name: Check Build Result
       run: |
         if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-          echo "✅ Kernel built: Image.gz-dtb"
+          echo "Kernel built: Image.gz-dtb"
           ls -lh out/arch/arm64/boot/Image.gz-dtb
         elif [ -f out/arch/arm64/boot/Image.gz ]; then
-          echo "✅ Kernel built: Image.gz"
+          echo "Kernel built: Image.gz"
           ls -lh out/arch/arm64/boot/Image.gz
         elif [ -f out/arch/arm64/boot/Image ]; then
-          echo "✅ Kernel built: Image"
+          echo "Kernel built: Image"
           ls -lh out/arch/arm64/boot/Image
         else
-          echo "❌ No kernel image found"
+          echo "No kernel image found"
           exit 1
         fi
 
     - name: Package AnyKernel3 ZIP
       run: |
         cd $GITHUB_WORKSPACE
-
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3
         cd AnyKernel3
 
-        # 配置 AnyKernel3
-        cat > anykernel.sh << 'EOFMARKER'
-# AnyKernel3 Ramdisk Mod Script
-properties() { '
-kernel.string=Custom Kernel for Raphael (MODULE_SIG_FORCE disabled)
-do.devicecheck=1
-do.modules=0
-do.systemless=1
-do.cleanup=1
-do.cleanuponabort=0
-device.name1=raphael
-device.name2=raphaelin
-supported.versions=
-supported.patchlevels=
-'; }
+        cat > anykernel.sh <<'AKEOF'
+        properties() { '
+        kernel.string=Custom Kernel for Raphael
+        do.devicecheck=1
+        do.modules=0
+        do.systemless=1
+        do.cleanup=1
+        do.cleanuponabort=0
+        device.name1=raphael
+        device.name2=raphaelin
+        supported.versions=
+        supported.patchlevels=
+        '; }
 
-block=/dev/block/bootdevice/by-name/boot;
-is_slot_device=0;
-ramdisk_compression=auto;
+        block=/dev/block/bootdevice/by-name/boot;
+        is_slot_device=0;
+        ramdisk_compression=auto;
 
-. tools/ak3-core.sh;
+        . tools/ak3-core.sh;
 
-dump_boot;
-write_boot;
-EOFMARKER
+        dump_boot;
+        write_boot;
+        AKEOF
 
-        # 复制内核镜像
         if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
           cp ../out/arch/arm64/boot/Image.gz-dtb ./
         elif [ -f ../out/arch/arm64/boot/Image.gz ]; then
@@ -222,28 +176,26 @@ EOFMARKER
           cp ../out/arch/arm64/boot/Image ./
         fi
 
-        # 打包
-        zip -r9 ../Kernel-raphael-NoModuleSig-$(date +%Y%m%d-%H%M).zip * -x .git README.md .gitignore
-
+        ZIPNAME="Kernel-raphael-$(date +%Y%m%d-%H%M).zip"
+        zip -r9 ../$ZIPNAME * -x .git README.md .gitignore
         cd ..
-        ls -lh Kernel-raphael-*.zip
+        ls -lh $ZIPNAME
 
     - name: Generate Build Info
       run: |
         cd $GITHUB_WORKSPACE
-
-        echo "=== Kernel Build Info ===" > build-info.txt
-        echo "Device: Redmi K20 Pro (raphael)" >> build-info.txt
-        echo "Kernel Version: $(make kernelversion O=out)" >> build-info.txt
-        echo "Build Date: $(date)" >> build-info.txt
-        echo "Builder: GitHub Actions" >> build-info.txt
-        echo "" >> build-info.txt
-        echo "=== 关键配置 ===" >> build-info.txt
-        echo "⭐ CONFIG_MODULE_SIG_FORCE 已禁用 - 可以加载未签名的内核模块（如 cpufake）" >> build-info.txt
-        echo "" >> build-info.txt
-        grep -E "CONFIG_MODULES=|CONFIG_MODULE_SIG|CONFIG_KALLSYMS=|CONFIG_KPROBES=" out/.config >> build-info.txt
-
-        cat build-info.txt
+        BUILDINFO="build-info.txt"
+        echo "=== Kernel Build Info ===" > $BUILDINFO
+        echo "Device: Redmi K20 Pro (raphael)" >> $BUILDINFO
+        echo "Kernel Version: $(make kernelversion O=out)" >> $BUILDINFO
+        echo "Build Date: $(date)" >> $BUILDINFO
+        echo "Builder: GitHub Actions" >> $BUILDINFO
+        echo "" >> $BUILDINFO
+        echo "=== Critical Configs ===" >> $BUILDINFO
+        echo "CONFIG_MODULE_SIG_FORCE disabled - can load unsigned modules" >> $BUILDINFO
+        echo "" >> $BUILDINFO
+        grep -E "CONFIG_MODULES=|CONFIG_MODULE_SIG|CONFIG_KALLSYMS=|CONFIG_KPROBES=" out/.config >> $BUILDINFO || true
+        cat $BUILDINFO
 
     - name: Upload Kernel Image
       uses: actions/upload-artifact@v4
