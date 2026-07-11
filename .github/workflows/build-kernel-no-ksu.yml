@@ -148,7 +148,7 @@ jobs:
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3
         cd AnyKernel3
 
-        # 创建正确的 anykernel.sh
+        # 创建正确的 anykernel.sh（针对 raphael 动态分区）
         echo "## AnyKernel3 script" > anykernel.sh
         echo "properties() { '" >> anykernel.sh
         echo "kernel.string=Custom Kernel for Raphael" >> anykernel.sh
@@ -163,7 +163,7 @@ jobs:
         echo "supported.patchlevels=" >> anykernel.sh
         echo "'; }" >> anykernel.sh
         echo "" >> anykernel.sh
-        echo "block=/dev/block/by-name/boot;" >> anykernel.sh
+        echo "block=/dev/block/sde49;" >> anykernel.sh
         echo "is_slot_device=0;" >> anykernel.sh
         echo "ramdisk_compression=auto;" >> anykernel.sh
         echo "" >> anykernel.sh
