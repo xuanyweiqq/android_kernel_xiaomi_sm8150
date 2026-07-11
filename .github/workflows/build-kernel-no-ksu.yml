@@ -74,10 +74,14 @@ jobs:
         scripts/config --file out/.config --disable MODULE_SIG_ALL
         scripts/config --file out/.config --enable KALLSYMS
         scripts/config --file out/.config --enable KALLSYMS_ALL
+
+        # 启用 KPROBES（cpufake 完整功能需要）
         scripts/config --file out/.config --enable KPROBES
         scripts/config --file out/.config --enable KPROBE_EVENTS
         scripts/config --file out/.config --enable KRETPROBES
-        scripts/config --file out/.config --disable CONFIG_BUILD_ARM64_DT_OVERLAY
+
+        # 保持 DTB overlay 启用 - 与原内核一致
+        # scripts/config --file out/.config --disable CONFIG_BUILD_ARM64_DT_OVERLAY
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC
         scripts/config --file out/.config --disable ELLIPTIC_US
         scripts/config --file out/.config --disable SND_SOC_ELLIPTIC_US
