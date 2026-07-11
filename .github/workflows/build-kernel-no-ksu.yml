@@ -144,34 +144,29 @@ jobs:
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3
         cd AnyKernel3
 
-        cat > anykernel.sh <<'AKEOF'
-        ## AnyKernel3 script
-        ## properties
-        properties() { '
-        kernel.string=Custom Kernel for Raphael
-        do.devicecheck=1
-        do.modules=0
-        do.systemless=1
-        do.cleanup=1
-        do.cleanuponabort=0
-        device.name1=raphael
-        device.name2=raphaelin
-        supported.versions=
-        supported.patchlevels=
-        '; }
-
-        ## boot shell variables
-        block=/dev/block/bootdevice/by-name/boot;
-        is_slot_device=0;
-        ramdisk_compression=auto;
-
-        ## AnyKernel methods
-        . tools/ak3-core.sh;
-
-        ## AnyKernel install
-        dump_boot;
-        write_boot;
-        AKEOF
+        # 创建正确的 anykernel.sh
+        echo "## AnyKernel3 script" > anykernel.sh
+        echo "properties() { '" >> anykernel.sh
+        echo "kernel.string=Custom Kernel for Raphael" >> anykernel.sh
+        echo "do.devicecheck=1" >> anykernel.sh
+        echo "do.modules=0" >> anykernel.sh
+        echo "do.systemless=1" >> anykernel.sh
+        echo "do.cleanup=1" >> anykernel.sh
+        echo "do.cleanuponabort=0" >> anykernel.sh
+        echo "device.name1=raphael" >> anykernel.sh
+        echo "device.name2=raphaelin" >> anykernel.sh
+        echo "supported.versions=" >> anykernel.sh
+        echo "supported.patchlevels=" >> anykernel.sh
+        echo "'; }" >> anykernel.sh
+        echo "" >> anykernel.sh
+        echo "block=/dev/block/bootdevice/by-name/boot;" >> anykernel.sh
+        echo "is_slot_device=0;" >> anykernel.sh
+        echo "ramdisk_compression=auto;" >> anykernel.sh
+        echo "" >> anykernel.sh
+        echo ". tools/ak3-core.sh;" >> anykernel.sh
+        echo "" >> anykernel.sh
+        echo "dump_boot;" >> anykernel.sh
+        echo "write_boot;" >> anykernel.sh
 
         if [ -f ../out/arch/arm64/boot/Image.gz-dtb ]; then
           cp ../out/arch/arm64/boot/Image.gz-dtb ./
